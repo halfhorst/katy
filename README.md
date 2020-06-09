@@ -44,9 +44,11 @@ in the tree.
 
 [1] Bentley, Jon Louis. "Multidimensional binary search trees used for
     associative searching." Communications of the ACM 18.9 (1975): 509-517.
+
 [2] Friedman, Jerome H., Jon Louis Bentley, and Raphael Ari Finkel. "An
     algorithm for finding best matches in logarithmic expected time." ACM
     Transactions on Mathematical Software (TOMS) 3.3 (1977): 209-226.
+
 [3] Maneewongvatana, Songrit, and David M. Mount. "It’s okay to be skinny, if
     your friends are fat." Center for Geometric Computing 4th Annual Workshop
     on Computational Geometry. Vol. 2. 1999.
