@@ -48,7 +48,6 @@ TEST(TestBuildTree, BuildLessThanLeafPoints) {
   check_tree_invariant(tree);
 }
 
-
 TEST(TestBuildTree, FewPoints) {
   int leaf_size = 1;
   int size = 10;
@@ -70,7 +69,6 @@ TEST(TestBuildTree, ManyPoints) {
   check_tree_invariant(tree);
 }
 
-
 TEST(TestQuery, NearestNeighbor) {
   // a 10x10 cube
   double points[] = {0.0, 0.0, 10.0, 10.0, 10.0, 0.0, 0.0, 10.0};
@@ -82,13 +80,13 @@ TEST(TestQuery, NearestNeighbor) {
 
   double test_point[] = {9.0, 9.0};  // expect (10, 10)
   int n = 1;
-  char distance[] = "euclidean";
+  char distance[] = "squared_euclidean";
   struct KdResult *results;
   int num_results = kd_tree_query_n_nearest_neighbors(tree, test_point, n, distance, &results);
   EXPECT_EQ(num_results, n);
   EXPECT_EQ(results[0].point[0], 10);
   EXPECT_EQ(results[0].point[1], 10);
-  EXPECT_EQ(results[0].distance, 2);  // TODO: make clear we use squared euclidean, client needs to root
+  EXPECT_EQ(results[0].distance, 2);
 }
 
 TEST(TestQuery, RangeSearch) {
@@ -102,12 +100,11 @@ TEST(TestQuery, RangeSearch) {
 
   double test_point[] = {5.0, 10.0};
   double radii[] = {6.0, 1.0};
-  char distance[] = "euclidean";
+  char distance[] = "squared_euclidean";
   struct KdResult *results;
   int num_results = kd_tree_query_range(tree, test_point, radii, distance, &results);
   EXPECT_EQ(num_results, 2);  // (0, 10), (10, 10);
 }
-
 
 void random_nonzero_array(double *arr, int n, int range) {
   for (int i = 0; i < n; i++) {

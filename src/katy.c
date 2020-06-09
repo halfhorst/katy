@@ -1,33 +1,81 @@
 #include <stdlib.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <string.h>
-#include <float.h>
+#include <stdio.h>
 #include <math.h>
 
 #include "katy.h"
 #include "heap.h"
 
-// TODO: Re-arrange to work through return parameters so the client
-//       can manage their own memory
-
-struct KdNode *create_kd_node();
 void recursive_free_kd_node(struct KdNode *node);
-struct KdNode *recursive_select_median(double *points, int *indices, int num_indices, int k, int leaf_size);
-int get_splitting_axis(double *points, int *indices, int num_indices, int k);
-void partition_indices(double *points, int *indices, int num_indices, int k, int split_axis, int partition_index);
-void swap(int *indices, int a, int b);
-void recursive_nearest_neighbor_descent(struct KdTree *tree, struct KdNode *node, double *input,
-                                        int n, struct MaxHeap *result_heap);
-void recursive_query_range_descent(struct KdTree *tree, struct KdNode *node, double *test_point,
-                                   double *radii, struct MaxHeap *result_heap);
-double minkowski_1(double *a, double *b, int k);
-double squared_minkowski_2(double *a, double *b, int k);
 
 /*
-  Create an empty kd-tree with dimensionality k.
-  Returns NULL on failure to malloc.
+  Select the median of the longest axis from among the points in the set of
+  indices, then recursively call to determine the low and high subtree. Returns
+  a node representing the split, or NULL on failure.
 */
+struct KdNode *recursive_select_median(double *points, int *indices,
+                                       int num_indices, int k, int leaf_size);
+
+/*
+  Determine the axis of greatest spread from among the points in the set of
+  indices.
+*/
+int get_splitting_axis(double *points, int *indices, int num_indices, int k);
+
+/*
+  Partition the indices array in-place based on values from the points array
+  into smaller values on the split_axis below the partition_index and greater
+  values above.
+*/
+void partition_indices(double *points, int *indices, int num_indices, int k,
+                       int split_axis, int partition_index);
+
+/* Utility function for swapping elements of the index array. */
+void swap(int *indices, int a, int b);
+
+/*
+  Ridiculous function pointer syntax. get_comparison_function parses
+  distance_metric and returns a pointer to a function with a signature like so:
+
+  double fxn(double *a, double *b, int k) -- a.k.a a distance function
+*/
+double (*get_distance_function(char *distance_metric))(double *a, double *b,
+                                                       int k);
+
+/*
+  Recursively descend down the kd-tree, pushing points onto the result_heap
+  if less than `n` are currently recorded or their distance is less than the
+  current maximum.
+*/
+void recursive_nearest_neighbor_descent(struct KdTree *tree,
+                                        struct KdNode *node, double *input,
+                                        int n, struct MaxHeap *result_heap,
+                                        double (*distance_function)(double *a,
+                                                                    double *b,
+                                                                    int k));
+
+/*
+  Recursively descend down the kd-tree, pushing points onto the result_heap if
+  they lie within the `radii` around the `test_point`.
+*/
+void recursive_query_range_descent(struct KdTree *tree, struct KdNode *node,
+                                   double *test_point, double *radii,
+                                   struct MaxHeap *result_heap,
+                                   double (distance_function)(double *a,
+                                                              double *b,
+                                                              int k));
+
+/* Minkowski distance where p = 1, a.k.a. Manhattan distance. */
+double minkowski_1(double *a, double *b, int k);
+
+/*
+  Squared Minkowski distance where p = 2, a.k.a. Squared Euclidean distance.
+  Useful because it avoids a root operation.
+ */
+double squared_minkowski_2(double *a, double *b, int k);
+
+
 struct KdTree *create_kd_tree(int k) {
   struct KdTree *tree = malloc(sizeof(struct KdTree));
   if (tree == NULL) {
@@ -41,17 +89,13 @@ struct KdTree *create_kd_tree(int k) {
   return tree;
 }
 
-/*
-  Build a kd-tree from points provided. Input data is copied if copy_data is true.
-  Returns NULL on failure.
-*/
-struct KdTree *build_kd_tree(double *input_points, int num_points, int k, int leaf_size, bool copy_data) {
+struct KdTree *build_kd_tree(double *input_points, int num_points, int k,
+                             int leaf_size, bool copy_data) {
   struct KdTree *tree = create_kd_tree(k);
   if (tree == NULL || num_points == 0) {
     return NULL;
   }
 
-  // Will the tree hold a pointer to the data or a copy of the data it controls?
   if (copy_data) {
     double *points = malloc(sizeof(double) * num_points * k);
     if (points == NULL) {
@@ -66,14 +110,12 @@ struct KdTree *build_kd_tree(double *input_points, int num_points, int k, int le
   }
   tree->size = num_points;
 
-  // setup an array for indexing the data
   int *indices = malloc(sizeof(int) * num_points);
   if (indices == NULL) {
     return NULL;
   }
   for (int i = 0; i < num_points; i++) indices[i] = i;
 
-  // stop if we only have leaf-number of points
   if (num_points <= leaf_size) {
     struct KdNode *node = malloc(sizeof(struct KdNode));
     if (node == NULL) {
@@ -89,24 +131,22 @@ struct KdTree *build_kd_tree(double *input_points, int num_points, int k, int le
     return tree;
   }
 
-  // operate on indices into the data array
-  tree->root = recursive_select_median(tree->data, indices, num_points, k, leaf_size);
+  tree->root = recursive_select_median(tree->data, indices, num_points, k,
+                                       leaf_size);
   return tree;
 }
 
-/* Free a kd tree and its accompanying data */
 void free_kd_tree(struct KdTree *tree) {
   if (tree->root != NULL) {
     recursive_free_kd_node(tree->root);
   }
 
-  if(tree->copied) {
+  if (tree->copied) {
     free(tree->data);
   }
   free(tree);
 }
 
-/* Free a kd tree node and its children recursively */
 void recursive_free_kd_node(struct KdNode *node) {
   // node guaranteed not null
   if (node->low != NULL) {
@@ -119,14 +159,14 @@ void recursive_free_kd_node(struct KdNode *node) {
   free(node);
 }
 
-struct KdNode *recursive_select_median(double *points, int *indices, int num_indices, int k, int leaf_size) {
-
+struct KdNode *recursive_select_median(double *points, int *indices,
+                                       int num_indices, int k, int leaf_size) {
   int *indices_copy = malloc(sizeof(int) * num_indices);
   for (int i = 0; i < num_indices; i++) {
     indices_copy[i] = indices[i];
   }
 
-  // if we are at num_indices < leaf_size, make a leaf and return it
+  // bail if we have less than leaf number of points
   if (num_indices <= leaf_size) {
     struct KdNode *node = malloc(sizeof(struct KdNode));
     if (node == NULL) {
@@ -141,38 +181,52 @@ struct KdNode *recursive_select_median(double *points, int *indices, int num_ind
   }
 
   int splitting_axis = get_splitting_axis(points, indices, num_indices, k);
+  if (splitting_axis == -1) {
+    return NULL;
+  }
 
-  // partition around the middle of the array
   int median_index = num_indices / 2;
-  partition_indices(points, indices, num_indices, k, splitting_axis, median_index);
+  partition_indices(points, indices, num_indices, k, splitting_axis,
+                    median_index);
 
-  // make a node
   struct KdNode *node = malloc(sizeof(struct KdNode));
   if (node == NULL) {
     return NULL;
   }
   node->is_leaf = false;
-  node->indices = indices_copy;      // TODO: Only need this copy for testing
+  node->indices = indices_copy;
   node->num_indices = num_indices;
   node->split_axis = splitting_axis;
   node->split_value = points[(indices[median_index] * k) + splitting_axis];
 
-  // here we pass in points to the beginning and the middle of the index array and
-  // adjust the count of indices accordingly
-  node->low = recursive_select_median(points, indices, median_index, k, leaf_size);
-  node->high = recursive_select_median(points, indices + median_index, num_indices - median_index, k, leaf_size);
+  // Continue on, selecting medians among the two sets of points partitioned
+  // about the median
+  node->low = recursive_select_median(points, indices, median_index, k,
+                                      leaf_size);
+  node->high = recursive_select_median(points, indices + median_index,
+                                       num_indices - median_index, k,
+                                       leaf_size);
 
   return node;
 }
 
 
-/* Determine the splitting axis based on maximum spread. */
+/*
+  Track the minimum and maximum of each dimension in one traversal of the
+  points, Then determine the largest spread among the dimensions by difference.
+*/
 int get_splitting_axis(double *points, int *indices, int num_indices, int k) {
-  int minimums[k];
-  int maximums[k];
+  int *minimums = malloc(sizeof(int) * k);
+  int *maximums = malloc(sizeof(int) * k);
+
+  if ((minimums == NULL) | (maximums == NULL)) {
+    return -1;
+  }
+
+  // use the first point to pre-populate
   for (int i = 0; i < k; i++) {
-    minimums[i] = points[i];
-    maximums[i] = points[i];
+    minimums[i] = points[(indices[0] * k) + i];
+    maximums[i] = points[(indices[0] * k) + i];
   }
 
   for (int i = 1; i < num_indices; i++) {
@@ -196,18 +250,18 @@ int get_splitting_axis(double *points, int *indices, int num_indices, int k) {
     }
   }
 
+  free(minimums);
+  free(maximums);
   return split_axis;
 }
 
-
-/* A quicksort-esque partition around split_index. Smaller values precede the parition_index.*/
-void partition_indices(double *points, int *indices, int num_indices, int k, int split_axis, int partition_index) {
-
+void partition_indices(double *points, int *indices, int num_indices, int k,
+                       int split_axis, int partition_index) {
   int left = 0;
   int right = num_indices - 1;
 
   int middle;
-  while(true) {
+  while (true) {
     middle = left;
     for (int i = left; i < right; i++) {
       double val1 = points[indices[i] * k + split_axis];
@@ -234,31 +288,31 @@ void swap(int *indices, int a, int b) {
   indices[b] = tmp;
 }
 
+
+double (*get_distance_function(char *distance_metric))(double *a, double *b,
+                                                       int k) {
+  if (strncmp(distance_metric, "squared_euclidean", 17) == 0) {
+    return squared_minkowski_2;
+  } else if (strncmp(distance_metric, "manhattan", 9) == 0) {
+    return minkowski_1;
+  } else {
+    fprintf(stderr, "Unknown distance metric encountered.\n");
+    exit(EXIT_FAILURE);
+  }
+}
+
 int kd_tree_query_n_nearest_neighbors(struct KdTree *tree, double *input,
                                       int n, char *distance_metric,
                                       struct KdResult **results) {
-
-  // find n closest to input point
-  // use a max heap to keep track, peek the top for the greatest distance
-  // if greater than pop and push the new point
-
-  // at the end make the result by poping and putting into results
-
   if (tree->size == 0) {
     return 0;
   }
 
-  struct MaxHeap *results_heap;
-  // TODO: different distance metrics
-  if (strncmp(distance_metric, "euclidean", 9)) {
-    results_heap = create_max_heap(n);
-  } else if (strncmp(distance_metric, "manhattan", 9)) {
-    results_heap = create_max_heap(n);
-  } else {
-    results_heap = create_max_heap(n);
-  }
+  struct MaxHeap *results_heap = create_max_heap(n);
 
-  recursive_nearest_neighbor_descent(tree, tree->root, input, n, results_heap);
+
+  recursive_nearest_neighbor_descent(tree, tree->root, input, n, results_heap,
+                                     get_distance_function(distance_metric));
 
   struct HeapItem *item;
   int num_results = results_heap->size;
@@ -274,19 +328,26 @@ int kd_tree_query_n_nearest_neighbors(struct KdTree *tree, double *input,
   return num_results;
 }
 
-void recursive_nearest_neighbor_descent(struct KdTree *tree, struct KdNode *node, double *test_point, int n,
-                                        struct MaxHeap *result_heap) {
+/*
+  Descends down the tree recursively, selecting regions that contain the
+  test point. We determine if the other side of the splitting plane could
+  contain a point loser, and check it if so.
+*/
+void recursive_nearest_neighbor_descent(struct KdTree *tree,
+                                        struct KdNode *node,
+                                        double *test_point, int n,
+                                        struct MaxHeap *result_heap,
+                                        double (*distance_function)(double *a,
+                                                                    double *b,
+                                                                    int k)) {
   if (node == NULL) {
     return;
   }
 
   if (node->is_leaf) {
-    // check all points in this leaf node
-    // stick in the heap if it isn't full or if its closer than
-    // the furthest already in the heap
     for (int i = 0; i < node->num_indices; i++) {
       double *point = tree->data + (node->indices[i] * tree->k);
-      double distance = squared_minkowski_2(point, test_point, tree->k);
+      double distance = distance_function(point, test_point, tree->k);
       if (result_heap->size < n) {
         max_heap_insert(result_heap, point, distance);
       } else {
@@ -305,25 +366,27 @@ void recursive_nearest_neighbor_descent(struct KdTree *tree, struct KdNode *node
   // descend on the same side as the test point
   bool took_low = false;
   if (test_point[node->split_axis] < node->split_value) {
-  // recur on the lower side
-    recursive_nearest_neighbor_descent(tree, node->low, test_point, n, result_heap);
+    recursive_nearest_neighbor_descent(tree, node->low, test_point, n,
+                                       result_heap, distance_function);
     took_low = true;
   } else {
-    // recrur on the higher side
-    recursive_nearest_neighbor_descent(tree, node->high, test_point, n, result_heap);
+    recursive_nearest_neighbor_descent(tree, node->high, test_point, n,
+                                       result_heap, distance_function);
   }
 
-  // now decide if the other side is a possibility
+  // Decide if the other side of the splitting plane is a possibility
   struct HeapItem *current_furthest;
   max_heap_peak(result_heap, &current_furthest);
   double max_distance = current_furthest->value;
   if (took_low) {
     if ((test_point[node->split_axis] + max_distance) >= node->split_value) {
-      recursive_nearest_neighbor_descent(tree, node->high, test_point, n, result_heap);
+      recursive_nearest_neighbor_descent(tree, node->high, test_point, n,
+                                         result_heap, distance_function);
     }
   } else {
     if ((test_point[node->split_axis] - max_distance) <= node->split_value) {
-      recursive_nearest_neighbor_descent(tree, node->low, test_point, n, result_heap);
+      recursive_nearest_neighbor_descent(tree, node->low, test_point, n,
+                                         result_heap, distance_function);
     }
   }
 }
@@ -334,18 +397,11 @@ int kd_tree_query_range(struct KdTree *tree, double *test_point, double *radii,
     return 0;
   }
 
-  struct MaxHeap *results_heap;
   int initial_heap_capacity = 100;
-  // TODO: different distance metrics
-  if (strncmp(distance_metric, "euclidean", 9)) {
-    results_heap = create_max_heap(initial_heap_capacity);
-  } else if (strncmp(distance_metric, "manhattan", 9)) {
-    results_heap = create_max_heap(initial_heap_capacity);
-  } else {
-    results_heap = create_max_heap(initial_heap_capacity);
-  }
-
-  recursive_query_range_descent(tree, tree->root, test_point, radii, results_heap);
+  struct MaxHeap *results_heap = create_max_heap(initial_heap_capacity);
+  recursive_query_range_descent(tree, tree->root, test_point, radii,
+                                results_heap,
+                                get_distance_function(distance_metric));
 
   struct HeapItem *item;
   int num_results = results_heap->size;
@@ -361,18 +417,24 @@ int kd_tree_query_range(struct KdTree *tree, double *test_point, double *radii,
   return num_results;
 }
 
-
-void recursive_query_range_descent(struct KdTree *tree, struct KdNode *node, double *test_point,
-                                   double *radii, struct MaxHeap *result_heap) {
-
+/*
+  Recursively descend down the tree, only entering regions that intersect the
+  query range area.
+*/
+void recursive_query_range_descent(struct KdTree *tree, struct KdNode *node,
+                                   double *test_point, double *radii,
+                                   struct MaxHeap *result_heap,
+                                   double (*distance_function)(double *a,
+                                                               double *b,
+                                                               int k)) {
   if (node == NULL) {
     return;
   }
 
-  if (node->is_leaf == true) {
+  if (node->is_leaf) {
     for (int i = 0; i < node->num_indices; i++) {
-      // check the distance between test point and node point
-      // is it less than radii?
+      // check the distance between test point and kd-tree point in each
+      // dimension to determine if it satisfies the range query.
       double *point = tree->data + (node->indices[i] * tree->k);
       bool inside = true;
       for (int j = 0; j < tree->k; j++) {
@@ -381,22 +443,25 @@ void recursive_query_range_descent(struct KdTree *tree, struct KdNode *node, dou
         }
       }
       if (inside) {
-        double distance = squared_minkowski_2(point, test_point, tree->k);
+        double distance = distance_function(point, test_point, tree->k);
         max_heap_insert(result_heap, point, distance);
       }
     }
     return;
   }
 
-  if ((test_point[node->split_axis] + radii[node->split_axis]) >= node->split_value) {
-    recursive_query_range_descent(tree, node->high, test_point, radii, result_heap);
+  if ((test_point[node->split_axis] + radii[node->split_axis])
+      >= node->split_value) {
+    recursive_query_range_descent(tree, node->high, test_point, radii,
+                                  result_heap, distance_function);
   }
-  if ((test_point[node->split_axis] - radii[node->split_axis]) <= node->split_value) {
-    recursive_query_range_descent(tree, node->low, test_point, radii, result_heap);
+  if ((test_point[node->split_axis] - radii[node->split_axis])
+      <= node->split_value) {
+    recursive_query_range_descent(tree, node->low, test_point, radii,
+                                  result_heap, distance_function);
   }
 }
 
-/* manhattan distance */
 double minkowski_1(double *a, double *b, int k) {
   double dist = 0;
   for (int i = 0; i < k; i++) {
@@ -405,7 +470,6 @@ double minkowski_1(double *a, double *b, int k) {
   return dist;
 }
 
-/* euclidean distance */
 double squared_minkowski_2(double *a, double *b, int k) {
   double dist = 0;
   for (int i = 0; i < k; i++) {

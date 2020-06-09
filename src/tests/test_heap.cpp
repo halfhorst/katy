@@ -6,12 +6,10 @@ extern "C" {
   #include "../heap.h"
 }
 
-
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-
 
 TEST(TestHeap, Insert) {
   struct MaxHeap *heap = create_max_heap(10);
