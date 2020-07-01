@@ -2,8 +2,8 @@
 
 This library is a personal project, conceived of for practice with a spatial
 data structure and digging into Cpython. There are far better kd-tree
-implementations in the wild, and this one is liable to WIP on the master branch
-anyways.
+implementations in the wild, and this one is liable to be WIP on the master
+branch. For instance, the python extension doesn't exist, currently.
 
 kd-trees are tree structures containing k-dimensional points that partition the
 points along one dimension at each level of the tree. There is considerable
@@ -68,20 +68,28 @@ Katy supports `n` nearest neighbor searches and range searches from a test
 point. The range searches are additionally specified with an array of radii for
 each axis in `k`.
 
+## Dependencies
+
+Katy is written in c99 but the tests require [googletest](https://github.com/google/googletest)
+and it is not distributed with this project. It needs to be available to the
+linker during linking, so check out how to get a hold of it.
+
 ## Building / Running
 
-Currently, the Makefile only supports building and running (sparse) tests. Note
-that the tests require googletest, and expect it to be installed so your
-compiler and linker can find what they need.
+The Makefile's default target will build and run the tests. There is a test
+suite for the heap that is used internally and a test suite for the tree
+itself.
 
 ## What's next
 
 * More extensive testing
 * _The actual Python binding_
+* Once in python, play around with benching and airspeed-velocity.
 
-# Other Things to Explore:
+# Other Spatial Things to Explore:
 
-* A ball tree, suitable for higher dimensions
-* A quad/octree
-* BVH and AABB as it pertains to rendering
-* Spacefilling curves
+* Ball tree, suitable for higher dimensions
+* Quad/octree
+* Bounding Volume Hierarchies and Axis-aligned Bounding Boxes as they pertain
+  to rendering.
+* Spacefilling curves, Google's S2 geometry and Uber's H3.

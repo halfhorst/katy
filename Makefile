@@ -10,6 +10,8 @@ BUILD_DIR = build
 default: test
 
 test: $(BUILD_DIR)/test_tree $(BUILD_DIR)/test_heap
+	./$(BUILD_DIR)/test_heap
+	./$(BUILD_DIR)/test_tree
 
 $(BUILD_DIR)/test_tree: $(OBJ_DIR)/katy.o $(OBJ_DIR)/test_tree.o $(OBJ_DIR)/heap.o
 	$(CXX) $(CFLAGS) $^ -lgtest -lgtest_main -lpthread -o $@
